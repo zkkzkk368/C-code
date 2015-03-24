@@ -1,15 +1,35 @@
+/*
+用一个二维数组记录迷宫状态，代号如下 —— 
+	0：墙
+	1：路
+	2：路径
+	3：终点
+
+在迷宫上记录路径的作用：
+1、便于输出
+2、占位
+	表示这里已经走过，防止“进退进”和田字形的死循环 
+*/
+
 #include <stdio.h>
 
-int move(int x, int y, int maze[][10], int xx, int yy);
-void pretty_print(int maze[][10]); 
+int move(int x, int y);
+void pretty_print(); 
+
+/*
+终点和迷宫在递归中多次调用，设置为全局变量
+简化函数的参数传递，避免重复赋值 
+*/
+int maze[10][10];
+int xx, yy; 	/*记录终点*/
 
 int main()
 {
-    int i, j;
-    int maze[10][10];
-    int x, y, xx, yy;
-    FILE *fp;
+    int i, j;	/*计数器*/
+    int x, y;	/*记录起点*/
     
+    /*初始化，通过txt文件获取迷宫和起止点*/ 
+    FILE *fp;
     fp = fopen("maze.txt", "r");
 
     for(i = 0; i < 10; i++)
@@ -18,83 +38,89 @@ int main()
                 
     fscanf(fp, "%d %d", &x, &y);
 	fscanf(fp, "%d %d", &xx, &yy);            
-    
-    maze[x][y] = 2;
-    
-    if(move(x, y, maze, xx, yy))
-    {
-		maze[xx][yy] = 3; 
-        pretty_print(maze);
-    } 
-    else
-    	printf("There are no ways!");
-    
-    
+    maze[x][y] = 2;	/*将起点纳入路径*/ 
     fclose(fp);
-}
- 
-int move(int x, int y, int maze[][10], int xx, int yy)
-{
-    int next = 1;
     
+    
+    if(move(x, y))
+    {
+    	maze[xx][yy] = 3;
+        pretty_print(); 
+	}
+    else
+    	printf("There is no way!");
+}
+
+
+/*
+递归、回溯，依次尝试向右、下、左、上移动；
+移动的过程中在迷宫上记录路径，如果失败，清除路径记录； 
+*/
+int move(int x, int y)
+{
     if(x == xx && y == yy)
          return 1;
     
+    /*右*/
     if(maze[x+1][y] == 1)
     {
         maze[x+1][y] = 2;
-        next = move(x+1, y, maze, xx, yy);
-        if(next != 0)
+        if(move(x+1, y))
             return 1;   
         else
             maze[x+1][y] = 1;                
     }
+    
+    /*下*/
     if(maze[x][y+1] == 1)
     {
         maze[x][y+1] = 2;
-        next = move(x, y+1, maze, xx, yy);
-        if(next != 0)
+        if(move(x, y+1))
             return 1;
         else
             maze[x][y+1] = 1;                   
     }
+    
+    /*左*/
     if(maze[x-1][y] == 1)
     {
         maze[x-1][y] = 2;
-        next = move(x-1, y, maze, xx, yy);
-        if(next != 0)
+        if(move(x-1, y))
             return 1;
         else
             maze[x-1][y] = 1;                 
-    }           
+    } 
+	
+	/*上*/          
     if(maze[x][y-1] == 1)
     {
         maze[x][y-1] = 2;
-        next = move(x, y-1, maze, xx, yy);
-        if(next != 0)
+        if(move(x, y-1))
             return 1;
         else
             maze[x][y-1] = 1;                   
     }
+    
+    /*没有合适的路径*/
     return 0;
 }
 
-void pretty_print(int maze[][10])
+void pretty_print()
 {
 	int i, j;
-	printf("+++++++++++++++++++\n");
+	printf("+ + + + + + + + + +\n");	/*上墙*/
 	for(i = 1; i < 9; i++)
 	{
-		putchar('+');
+		putchar('+');	/*左墙*/
 		for(j = 1; j < 9; j++)
 			switch(maze[i][j])
 			{ 
-				case 0: printf(" %c", '+');   break;
-				case 1: printf(" %c", '_');   break;
-				case 2: printf(" %c", '@');   break;
-				case 3: printf(" %c", '$');
+				case 0: printf(" %c", '+');   break;	/*墙*/
+				case 1: printf(" %c", '_');   break;	/*路*/
+				case 2: printf(" %c", '@');   break;	/*路径*/
+				case 3: printf(" %c", '$');				/*终点*/
 			} 
-		printf(" %c\n", '+');
+		printf(" %c\n", '+');	/*右墙*/
 	}
-	printf("+++++++++++++++++++\n");
+	printf("+ + + + + + + + + +\n");
 }
