@@ -12,6 +12,8 @@
 */
 
 #include <stdio.h>
+#define NEXT_X x+next_x[i]
+#define	NEXT_Y y+next_y[i]
 
 int move(int x, int y);
 void pretty_print(); 
@@ -22,6 +24,10 @@ void pretty_print();
 */
 int maze[10][10];
 int xx, yy; 	/*记录终点*/
+
+/*下一步的增量*/ 
+int next_x[] = {1,0,-1,0};
+int next_y[] = {0,1,0,-1};
 
 int main()
 {
@@ -58,48 +64,24 @@ int main()
 */
 int move(int x, int y)
 {
-    if(x == xx && y == yy)
-         return 1;
-    
-    /*右*/
-    if(maze[x+1][y] == 1)
-    {
-        maze[x+1][y] = 2;
-        if(move(x+1, y))
-            return 1;   
-        else
-            maze[x+1][y] = 1;                
-    }
-    
-    /*下*/
-    if(maze[x][y+1] == 1)
-    {
-        maze[x][y+1] = 2;
-        if(move(x, y+1))
-            return 1;
-        else
-            maze[x][y+1] = 1;                   
-    }
-    
-    /*左*/
-    if(maze[x-1][y] == 1)
-    {
-        maze[x-1][y] = 2;
-        if(move(x-1, y))
-            return 1;
-        else
-            maze[x-1][y] = 1;                 
-    } 
+	int i;
 	
-	/*上*/          
-    if(maze[x][y-1] == 1)
-    {
-        maze[x][y-1] = 2;
-        if(move(x, y-1))
-            return 1;
-        else
-            maze[x][y-1] = 1;                   
-    }
+    if(x == xx && y == yy)
+    	return 1;
+    
+    /*
+	define NEXT_X x+next_x[i]
+	define NEXT_Y y+next_y[i]
+	*/ 
+    for(i = 0; i < 4; i++)
+	    if(maze[NEXT_X][NEXT_Y] == 1)
+	    {
+	        maze[NEXT_X][NEXT_Y] = 2;
+	        if(move(NEXT_X, NEXT_Y))
+	        	return 1;
+	        else
+	            maze[NEXT_X][NEXT_Y] = 1;                
+	    }
     
     /*没有合适的路径*/
     return 0;
