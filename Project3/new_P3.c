@@ -1,7 +1,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <graphics.h>
-#include <dos.h>
+// #include <dos.h>
 
 #define ColorBytes (_color_bits/8)
 #define Ptr(x,y) (_vp+(_width*(y)+(x))*ColorBytes)		//指向坐标(x,y)的指针
@@ -20,13 +20,21 @@ void NewLine(struct line *head, char *word);
 void PrintWord(struct line *wp);
 // void CleanScreen(struct line *head);
 // int fgetline(FILE *fp, char *str);
+int StatusCheck(struct line *foot, char c);
+// void Refresh(struct line *wp, struct line *head);
+
+int record=0;	//记录成绩
 
 void main()
 {
 	struct line *head, *next, *foot;		//指向第一行
 	FILE *fp;
 	char word[20];
-	int result;
+	// int result;
+	// float Board_f=0.1;	//键盘检测频率，即每秒f次
+	char Board_k;		//记录键盘按键，char为一字节，会自行截断bioskey(0)的低八位
+	// float MoveSpeed=1;	//滚动速度，即每秒MoveSpeed行
+	// float SleepTime;
 
 	fp = fopen("words.txt", "r");
 
@@ -64,7 +72,7 @@ void main()
 			next = next->next;
 		}
 
-		//刷新（重打印）
+		// 刷新（重打印）
 		next = foot;
 		while(next != head)
 		{	
@@ -72,8 +80,24 @@ void main()
 			next = next->next;
 		}
 		PrintWord(head);
+		// Refresh(foot, head);
+
+
+		//按照一定频率扫描键盘缓冲区
+		//可是sleep只支持秒不支持毫秒，不好操作
+		// for(SleepTime = 0; SleepTime < MoveSpeed; SleepTime += Board_f)
+		// {
+		// 	if(bioskey(1))
+		// 		if(Board_k = bioskey(0))
+		// 			if(StatusCheck(foot, Board_k))	//如果有改变，立即刷新
+		// 				Refresh(foot, head);
+		// 	sleep(Board_f);
+		// }
 
 		sleep(1);
+		while(bioskey(1))
+			if(Board_k =bioskey(0))
+				StatusCheck(foot, Board_k);
 	}
 
 	fclose(fp);
@@ -136,17 +160,21 @@ void NewLine(struct line *head, char *word)
 */
 void PrintWord(struct line *wp)
 {
-	char *p;
-	int i;
+	char *p, *c=wp->word;
+	// int i;
+	int statusCk=1;	//特定位置字符的状态探针
 
 	p = wp->stptr;
-	for(i=0; i<wp->len; i++)
+	while(*c != '\0')
+	// for(i=0; i<wp->len; i++)
 	{
-		*p = wp->word[i];
+		// *p = wp->word[i];
+		*p = *c++;
+		if(wp->status & statusCk)	//检查特定字符是否已被匹配
+			*(p+1) = RED << 4;
+		statusCk <<= 1;
 		p += ColorBytes;
 	}
-
-	//缺少字体样式输出
 }
 
 /*
@@ -202,3 +230,46 @@ int fgetline(FILE *fp, char *str)
 	return 1;
 }
 */
+
+int StatusCheck(struct line *foot, char c)
+{
+	struct line *p=foot;
+	int isTyped, i, flag=0, FirstLoop=1;
+
+	while(p != foot || FirstLoop)
+	{
+		//跳过已打出的字母
+		i = 0;
+		do
+		{
+			isTyped = p->status & (1 << i);
+			i++;
+		}while(isTyped);	//此时i为所要判断的字母的索引+1
+
+		//比较字符
+		if(p->word[i-1] != c || i > p->len)	//字符不匹配 或 索引超出范围？
+			p->status = 0;
+		else if(i == p->len)	//匹配且恰好为最后一个字符？
+		{
+			record++;		//【Global】成绩增加
+			p->word[0] = '\0';	//“清除”单词
+			flag = 1;
+		}
+		else	//字符匹配且未完成
+			p->status = ( p->status << 1 ) + 1;	//添加状态
+
+		p = p->next;
+		FirstLoop = 0;
+	}
+	return flag;
+}
+
+// void Refresh(struct line *wp, struct line *head)
+// {
+// 	while(wp != head)
+// 	{	
+// 		PrintWord(wp);
+// 		wp = wp->next;
+// 	}
+// 	PrintWord(head);
+// }
