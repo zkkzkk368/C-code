@@ -1,10 +1,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <graphics.h>
-// #include <dos.h>
+#include <stdio.h>
 
-#define ColorBytes (_color_bits/8)
+#define ColorBytes (_color_bits/8)						//每个元素占用的字节数
 #define Ptr(x,y) (_vp+(_width*(y)+(x))*ColorBytes)		//指向坐标(x,y)的指针
+#define ESC 0x011b
 
 struct line
 {
@@ -21,9 +22,10 @@ void PrintWord(struct line *wp);
 // void CleanScreen(struct line *head);
 // int fgetline(FILE *fp, char *str);
 int StatusCheck(struct line *foot, char c);
-void Refresh(struct line *wp, struct line *head);
+void Refresh(struct line *foot, struct line *head);
+void CallReport(void);
 
-int record=0;	//记录成绩
+int grade=0;	//记录成绩
 int count=0;	//记录单词总数
 
 void main()
@@ -33,7 +35,7 @@ void main()
 	char word[20];
 	// int result;
 	int Board_T=100;	//键盘检测周期，即每T毫秒一次
-	char Board_k;		//记录键盘按键，char为一字节，会自行截断bioskey(0)的低八位
+	int Board_k;		//记录键盘按键
 	int MoveSpeed=1000;	//滚动速度，即每行MS毫秒
 	int SleepTime;
 
@@ -47,6 +49,7 @@ void main()
 	//生成首行
 	// fgetline(fp, word);
 	fscanf(fp, "%s", word);
+	count++;
 	NewLine(head, word);
 
 	while(!feof(fp) || foot->word[0]!='\0')
@@ -59,7 +62,10 @@ void main()
 		// result = fgetline(fp, word);
 		// if(result == 0)	break;
 		if(!feof(fp))
+		{
 			fscanf(fp, "%s", word);
+			count++;
+		}
 		else
 			word[0]='\0';
 
@@ -93,9 +99,14 @@ void main()
 		for(SleepTime = 0; SleepTime < MoveSpeed; SleepTime += Board_T)
 		{
 			while(bioskey(1))
+			{
 				if(Board_k = bioskey(0))
-					if(StatusCheck(foot, Board_k))	//如果有改变，立即刷新
+					if(Board_k == ESC)
+						CallReport();
+					else if(StatusCheck(foot, Board_k))	//如果有改变，立即刷新
 						Refresh(foot, head);
+				
+			}
 			delay(Board_T);
 		}
 
@@ -236,6 +247,10 @@ int fgetline(FILE *fp, char *str)
 }
 */
 
+/*
+状态检查，根据按键判断是否有匹配字母
+第二个参数c由于是char，会截断Board_k的后八位，即按键的ASSIC码
+*/
 int StatusCheck(struct line *foot, char c)
 {
 	struct line *p=foot;
@@ -256,7 +271,7 @@ int StatusCheck(struct line *foot, char c)
 			p->status = 0;
 		else if(i == p->len)	//匹配且恰好为最后一个字符？
 		{
-			record++;		//【Global】成绩增加
+			grade++;		//【Global】成绩增加
 			p->word[0] = '\0';	//“清除”单词
 			flag = 1;
 		}
@@ -272,8 +287,17 @@ int StatusCheck(struct line *foot, char c)
 	return flag;
 }
 
+/*
+刷新，清屏后，逐个调用PrintWord()来输出
+*/
 void Refresh(struct line *wp, struct line *head)
 {
+	char *p;
+	char *tip = "<ESC>:EXIT";
+	char result[10];
+	char *cp_result=result;
+	sprintf(result, "Grade:%03d", grade);
+
 	text_mode();	//重载文本模式，清屏
 	while(wp != head)
 	{	
@@ -281,4 +305,60 @@ void Refresh(struct line *wp, struct line *head)
 		wp = wp->next;
 	}
 	PrintWord(head);
+
+	//打印状态栏
+	p = Ptr(0, _height-1);
+	while(*tip != '\0')
+	{
+		*p = *tip++;
+		*(p+1) = BLUE << 4;
+		p += 2;
+	}
+
+	p = Ptr(_width - 9, _height-1);
+	while(*cp_result != '\0')
+	{
+		*p = *cp_result++;
+		*(p+1) = BLUE <<4;
+		p += 2;
+	}
+}
+
+void CallReport(void)
+{
+	int i, middle, center;
+	char result[20];
+	char *cp_report = "Report", *cp_result = result;
+	char *cp_tip = "Press any key to exit.";
+
+	sprintf(result, "Result:%03d/%03d(%02d%%)", grade, count, grade*100/count);
+
+	text_mode();
+
+	middle = _height / 2;
+	center = _width / 2;
+
+	//打印上下边框
+	for(i=-12; i<12; i++)
+		*Ptr(center+i, middle-2) = *Ptr(center+i, middle+2) = '-';
+
+	//打印左右边框
+	for(i=-2; i<3; i++)
+		*Ptr(center-13, middle+i) = *Ptr(center+12, middle+i) = '|';
+
+	//打印“Report”
+	for(i=-3; i<3; i++)
+		*Ptr(center+i, middle-1) = *cp_report++;
+
+	//打印“Result:***/***(**%)”
+	for(i=-9; i<10; i++)
+		*Ptr(center+i, middle) = *cp_result++;
+
+	//打印“Press any key to exit.”
+	for(i=-11; i<11; i++)
+		*Ptr(center+i, middle+1) = *cp_tip++;
+	
+	bioskey(0);
+	text_mode();
+	exit(1);
 }
