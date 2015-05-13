@@ -21,9 +21,10 @@ void PrintWord(struct line *wp);
 // void CleanScreen(struct line *head);
 // int fgetline(FILE *fp, char *str);
 int StatusCheck(struct line *foot, char c);
-// void Refresh(struct line *wp, struct line *head);
+void Refresh(struct line *wp, struct line *head);
 
 int record=0;	//记录成绩
+int count=0;	//记录单词总数
 
 void main()
 {
@@ -31,10 +32,10 @@ void main()
 	FILE *fp;
 	char word[20];
 	// int result;
-	// float Board_f=0.1;	//键盘检测频率，即每秒f次
+	int Board_T=100;	//键盘检测周期，即每T毫秒一次
 	char Board_k;		//记录键盘按键，char为一字节，会自行截断bioskey(0)的低八位
-	// float MoveSpeed=1;	//滚动速度，即每秒MoveSpeed行
-	// float SleepTime;
+	int MoveSpeed=1000;	//滚动速度，即每行MS毫秒
+	int SleepTime;
 
 	fp = fopen("words.txt", "r");
 
@@ -48,16 +49,20 @@ void main()
 	fscanf(fp, "%s", word);
 	NewLine(head, word);
 
-	while(!feof(fp))
+	while(!feof(fp) || foot->word[0]!='\0')
 	{	
 		// CleanScreen(foot);
-		text_mode();	//重载文本模式，清屏
+		// text_mode();	//重载文本模式，清屏
 
 		//生成新的首行
 		head = head->next;
 		// result = fgetline(fp, word);
 		// if(result == 0)	break;
-		fscanf(fp, "%s", word);
+		if(!feof(fp))
+			fscanf(fp, "%s", word);
+		else
+			word[0]='\0';
+
 		NewLine(head, word);
 		
 		//其余各行下移
@@ -73,31 +78,31 @@ void main()
 		}
 
 		// 刷新（重打印）
-		next = foot;
-		while(next != head)
-		{	
-			PrintWord(next);
-			next = next->next;
-		}
-		PrintWord(head);
-		// Refresh(foot, head);
-
-
-		//按照一定频率扫描键盘缓冲区
-		//可是sleep只支持秒不支持毫秒，不好操作
-		// for(SleepTime = 0; SleepTime < MoveSpeed; SleepTime += Board_f)
-		// {
-		// 	if(bioskey(1))
-		// 		if(Board_k = bioskey(0))
-		// 			if(StatusCheck(foot, Board_k))	//如果有改变，立即刷新
-		// 				Refresh(foot, head);
-		// 	sleep(Board_f);
+		// next = foot;
+		// while(next != head)
+		// {	
+		// 	PrintWord(next);
+		// 	next = next->next;
 		// }
+		// PrintWord(head);
+		Refresh(foot, head);
 
-		sleep(1);
-		while(bioskey(1))
-			if(Board_k =bioskey(0))
-				StatusCheck(foot, Board_k);
+
+		// 按照一定频率扫描键盘缓冲区
+		// 可是sleep只支持秒不支持毫秒，不好操作
+		for(SleepTime = 0; SleepTime < MoveSpeed; SleepTime += Board_T)
+		{
+			while(bioskey(1))
+				if(Board_k = bioskey(0))
+					if(StatusCheck(foot, Board_k))	//如果有改变，立即刷新
+						Refresh(foot, head);
+			delay(Board_T);
+		}
+
+		// sleep(1);
+		// while(bioskey(1))
+		// 	if(Board_k =bioskey(0))
+		// 		StatusCheck(foot, Board_k);
 	}
 
 	fclose(fp);
@@ -256,7 +261,10 @@ int StatusCheck(struct line *foot, char c)
 			flag = 1;
 		}
 		else	//字符匹配且未完成
+		{	
 			p->status = ( p->status << 1 ) + 1;	//添加状态
+			flag = 1;
+		}
 
 		p = p->next;
 		FirstLoop = 0;
@@ -264,12 +272,13 @@ int StatusCheck(struct line *foot, char c)
 	return flag;
 }
 
-// void Refresh(struct line *wp, struct line *head)
-// {
-// 	while(wp != head)
-// 	{	
-// 		PrintWord(wp);
-// 		wp = wp->next;
-// 	}
-// 	PrintWord(head);
-// }
+void Refresh(struct line *wp, struct line *head)
+{
+	text_mode();	//重载文本模式，清屏
+	while(wp != head)
+	{	
+		PrintWord(wp);
+		wp = wp->next;
+	}
+	PrintWord(head);
+}
