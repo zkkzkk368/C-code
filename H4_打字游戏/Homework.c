@@ -6,14 +6,15 @@
 #define ColorBytes (_color_bits/8)						//每个元素占用的字节数
 #define Ptr(x,y) (_vp+(_width*(y)+(x))*ColorBytes)		//指向坐标(x,y)的指针
 #define ESC 0x011b
+#define BOARD_T 100 	//键盘检测周期（毫秒/次）
 
 struct line
 {
-	char word[20];				//单词内容
-	char *stptr;				//指向本行输出头部的指针
+	char word[20];			//单词内容
+	char *stptr;			//指向本行输出头部的指针
 	int len;				//单词长度
 	struct line *next;		//指向下一节链表的指针
-	int status;				//单词状态，bit string，默认为0
+	long status;			//单词状态，bit string，默认为0
 };
 
 struct line * InitList(int n);
@@ -21,9 +22,11 @@ void NewLine(struct line *head, char *word);
 void PrintWord(struct line *wp);
 // void CleanScreen(struct line *head);
 // int fgetline(FILE *fp, char *str);
-int StatusCheck(struct line *foot, char c);
+void StatusCheck(struct line *foot, char c);
 void Refresh(struct line *foot, struct line *head);
 void CallReport(void);
+void CleanStatus(struct line *foot);
+char SpeedOption(void);
 
 int grade=0;	//记录成绩
 int count=0;	//记录单词总数
@@ -34,10 +37,18 @@ void main()
 	FILE *fp;
 	char word[20];
 	// int result;
-	int Board_T=100;	//键盘检测周期，即每T毫秒一次
 	int Board_k;		//记录键盘按键
-	int MoveSpeed=1000;	//滚动速度，即每行MS毫秒
-	int SleepTime;
+	int MoveSpeed;	//滚动速度，即每行MS毫秒
+	int SleepTime;		
+
+	//获取用户选择的速度档，并转换成各档对应的滚动速度
+	MoveSpeed = SpeedOption();
+	switch(MoveSpeed)
+	{
+		case 'e': MoveSpeed = 1000; break;
+		case 'n': MoveSpeed = 750; break;
+		case 'd': MoveSpeed = 500; break;
+	}
 
 	fp = fopen("words.txt", "r");
 
@@ -96,18 +107,22 @@ void main()
 
 		// 按照一定频率扫描键盘缓冲区
 		// 可是sleep只支持秒不支持毫秒，不好操作
-		for(SleepTime = 0; SleepTime < MoveSpeed; SleepTime += Board_T)
+		// 但是delay单位为毫秒
+		for(SleepTime = 0; SleepTime < MoveSpeed; SleepTime += BOARD_T)
 		{
 			while(bioskey(1))
 			{
 				if(Board_k = bioskey(0))
 					if(Board_k == ESC)
 						CallReport();
-					else if(StatusCheck(foot, Board_k))	//如果有改变，立即刷新
+					else  //根据按键匹配各个单词，修改状态后刷新
+					{
+						StatusCheck(foot, Board_k);
 						Refresh(foot, head);
+					}
 				
 			}
-			delay(Board_T);
+			delay(BOARD_T);
 		}
 
 		// sleep(1);
@@ -117,7 +132,7 @@ void main()
 	}
 
 	fclose(fp);
-	getchar();
+	CallReport();
 }
 
 /*
@@ -169,28 +184,6 @@ void NewLine(struct line *head, char *word)
 	// x = 10;
 	// head->stptr = _vp + x * (_color_bits / 8);
 	head->status = 0;						//状态清零
-}
-
-/*
-打印单词
-*/
-void PrintWord(struct line *wp)
-{
-	char *p, *c=wp->word;
-	// int i;
-	int statusCk=1;	//特定位置字符的状态探针
-
-	p = wp->stptr;
-	while(*c != '\0')
-	// for(i=0; i<wp->len; i++)
-	{
-		// *p = wp->word[i];
-		*p = *c++;
-		if(wp->status & statusCk)	//检查特定字符是否已被匹配
-			*(p+1) = RED << 4;
-		statusCk <<= 1;
-		p += ColorBytes;
-	}
 }
 
 /*
@@ -251,10 +244,10 @@ int fgetline(FILE *fp, char *str)
 状态检查，根据按键判断是否有匹配字母
 第二个参数c由于是char，会截断Board_k的后八位，即按键的ASSIC码
 */
-int StatusCheck(struct line *foot, char c)
+void StatusCheck(struct line *foot, char c)
 {
 	struct line *p=foot;
-	int isTyped, i, flag=0, FirstLoop=1;
+	int isTyped, i, FirstLoop=1;
 
 	while(p != foot || FirstLoop)
 	{
@@ -273,18 +266,32 @@ int StatusCheck(struct line *foot, char c)
 		{
 			grade++;		//【Global】成绩增加
 			p->word[0] = '\0';	//“清除”单词
-			flag = 1;
+			CleanStatus(foot);	//重置所有单词的状态，主要为了防止部分相同单词的存在，如absolute和absolutely，消除absolute后只需键入ly即可清除absolutely的情况
+			return;		//不存在相同的单词，没有必要继续检查其他单词
 		}
-		else	//字符匹配且未完成
-		{	
+		else	//字符匹配且未完成	
 			p->status = ( p->status << 1 ) + 1;	//添加状态
-			flag = 1;
-		}
 
 		p = p->next;
 		FirstLoop = 0;
 	}
-	return flag;
+}
+
+/*
+【辅助函数】
+清除所有单词的状态
+*/
+void CleanStatus(struct line *foot)
+{
+	struct line *p=foot;
+	int FirstLoop=1;
+
+	while(p != foot || FirstLoop)
+	{
+		p->status = 0;
+		FirstLoop = 0;	
+		p = p->next;
+	}
 }
 
 /*
@@ -321,6 +328,29 @@ void Refresh(struct line *wp, struct line *head)
 		*p = *cp_result++;
 		*(p+1) = BLUE <<4;
 		p += 2;
+	}
+}
+
+/*
+【辅助函数】
+打印单词
+*/
+void PrintWord(struct line *wp)
+{
+	char *p, *c=wp->word;
+	// int i;
+	int statusCk=1;	//特定位置字符的状态探针
+
+	p = wp->stptr;
+	while(*c != '\0')
+	// for(i=0; i<wp->len; i++)
+	{
+		// *p = wp->word[i];
+		*p = *c++;
+		if(wp->status & statusCk)	//检查特定字符是否已被匹配
+			*(p+1) = RED << 4;
+		statusCk <<= 1;
+		p += ColorBytes;
 	}
 }
 
@@ -361,4 +391,57 @@ void CallReport(void)
 	bioskey(0);
 	text_mode();
 	exit(1);
+}
+
+
+/*
+打印速度选择界面
+返回所选的速度档次
+*/
+char SpeedOption(void)
+{
+	char *cp_diff="Difficulty", *cp_easy="[E]asy", *cp_normal="[N]ormal", *cp_difficult="[D]ifficult", *cp_tip="Press E/N/D to select";
+	int i, middle, center;
+	char Board_k;
+
+	text_mode();	//清屏
+
+	middle = _height / 2;
+	center = _width / 2;
+
+	//打印上下边框
+	for(i=-11; i<12; i++)
+		*Ptr(center+i, middle-3) = *Ptr(center+i, middle+3) = '-';
+
+	//打印左右边框
+	for(i=-3; i<4; i++)
+		*Ptr(center-12, middle+i) = *Ptr(center+12, middle+i) = '|';
+
+	//打印“Difficulty”
+	for(i=-5; i<5; i++)
+		*Ptr(center+i, middle-2) = *cp_diff++;
+
+	//打印"[E]asy"
+	for(i=-5; i<1; i++)
+		*Ptr(center+i, middle-1) = *cp_easy++;
+
+	//打印“[N]ormal”
+	for(i=-5; i<3; i++)
+		*Ptr(center+i, middle) = *cp_normal++;
+
+	//打印“[D]ifficult”
+	for(i=-5; i<6; i++)
+		*Ptr(center+i, middle+1) = *cp_difficult++;
+
+	//打印“Press E/N/D to select”
+	for(i=-10; i<11; i++)
+		*Ptr(center+i, middle+2) = *cp_tip++;
+
+	//过滤无效按键
+	do
+	{
+		Board_k = bioskey(0);
+	}while(Board_k != 'e' && Board_k != 'n' && Board_k != 'd');
+
+	return Board_k;
 }
