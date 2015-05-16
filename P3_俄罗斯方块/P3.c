@@ -2,12 +2,22 @@
 #include <time.h>
 
 #define PTR(x,y) (_vp+(_width*y+x)*(_color_bits/8))		//相应坐标的指针
+
 #define BLOCKSIZE 30		//每格方块大小
-#define PLAYAREA_WIDRH  15	
+#define PLAYAREA_WIDTH  15	
 #define PLAYAREA_HEIGHT 18	//游戏区域大小（单位：格）
+
 #define ACTIVECOLOR RED		//活动方块的颜色
 #define STATICCOLOR	GREEN	//静态方块的颜色
 #define OTHERCOLOR WHITE	//其他部件的颜色
+
+#define BOARD_T 100 		//键盘检测周期
+
+//方向键扫描码
+#define TOP    0x4800
+#define LEFT   0x4b00
+#define BOTTOM 0x5000
+#define RIGHT  0x4d00
 
 void Init(void);
 void PrintBlock(int x, int y);
@@ -23,11 +33,18 @@ struct
 	int x;
 	int y;			//旋转中心的坐标
 	int dire;		//当前方向，'L'类和'T'为0-3，'Z'类和'I'为0-1
+	int top;	//该方块占用的区域，分别为上左下右占用的格数（以旋转中心为中心）
+	int right;
+	int bottom;
+	int left;
 }NextBlocks, ActiveBlocks;	//下一方块和当前方块
 
 void main()
 {
 	int gdriver = 0, gmode=VESA_800x600x8bit;
+	int MoveSpeed = 1000;	//方框移动速度，毫秒
+	int DelayTime;			//延迟累计时间
+	int Board_k;			//从键盘缓冲队列获取的按键信息
 
 	initgraph(&gdriver, &gmode, "");
 	Init();
@@ -36,7 +53,25 @@ void main()
 
 	while(1)
 	{
-		delay(1000);
+		for(DelayTime = 0; DelayTime < MoveSpeed; DelayTime += BOARD_T)
+		{
+			delay(BOARD_T);
+			while(bioskey(1))
+			{
+				Board_k = bioskey(0);
+				switch(Board_k)
+				{
+					case LEFT:
+						if(ActiveBlocks.x - ActiveBlocks.left > 1)
+							MoveBlocks(ActiveBlocks.x-1, ActiveBlocks.y);
+						break;
+					case RIGHT:
+						if(ActiveBlocks.x + ActiveBlocks.right < PLAYAREA_WIDTH)
+							MoveBlocks(ActiveBlocks.x+1, ActiveBlocks.y);
+						break;
+				}
+			}
+		}
 		MoveBlocks(ActiveBlocks.x, ActiveBlocks.y+1);
 	}
 
@@ -51,8 +86,8 @@ void main()
 void Init(void)
 {
 	setcolor(OTHERCOLOR);
-	line(BLOCKSIZE*(PLAYAREA_WIDRH+2), 0, BLOCKSIZE*(PLAYAREA_WIDRH+2), _height);		//分界线x=BLOCKSIZE*(PLAYAREA_WIDRH+2)
-	rectangle(BLOCKSIZE, BLOCKSIZE, BLOCKSIZE*(PLAYAREA_WIDRH+1), BLOCKSIZE*(PLAYAREA_HEIGHT+1));	//打印游戏区域边框
+	line(BLOCKSIZE*(PLAYAREA_WIDTH+2), 0, BLOCKSIZE*(PLAYAREA_WIDTH+2), _height);		//分界线x=BLOCKSIZE*(PLAYAREA_WIDTH+2)
+	rectangle(BLOCKSIZE, BLOCKSIZE, BLOCKSIZE*(PLAYAREA_WIDTH+1), BLOCKSIZE*(PLAYAREA_HEIGHT+1));	//打印游戏区域边框
 
 	NewBlocks();
 	ShowBlocks();
@@ -66,7 +101,7 @@ void ShowBlocks(void)
 {
 	ActiveBlocks = NextBlocks;
 
-	MoveBlocks(PLAYAREA_WIDRH / 2 + 1, 2);
+	MoveBlocks(PLAYAREA_WIDTH / 2 + 1, 2);
 }
 
 /*
@@ -75,9 +110,55 @@ void ShowBlocks(void)
 void NewBlocks(void)
 {
 	NextBlocks.style = rand() % 6;
-	NextBlocks.x = PLAYAREA_WIDRH / 2 + 1;
+	NextBlocks.x = PLAYAREA_WIDTH / 2 + 1;
 	NextBlocks.y = 2;
 	NextBlocks.dire = 0;
+
+	switch(NextBlocks.style)
+	{
+		case 0:
+			//RL方块
+			NextBlocks.top    = 1;		
+			NextBlocks.left   = 0;		
+			NextBlocks.bottom = 1;		
+			NextBlocks.right  = 1;		
+			break;
+		case 1:
+			//LL方块
+			NextBlocks.top    = 1;			
+			NextBlocks.left   = 1;		
+			NextBlocks.bottom = 1;		
+			NextBlocks.right  = 0;		
+			break;
+		case 2:
+			//T方块
+			NextBlocks.top    = 1;			
+			NextBlocks.left   = 1;		
+			NextBlocks.bottom = 0;		
+			NextBlocks.right  = 1;		
+			break;
+		case 3:
+			//RZ方块
+			NextBlocks.top    = 1;			
+			NextBlocks.left   = 0;			
+			NextBlocks.bottom = 1;			
+			NextBlocks.right  = 1;		
+			break;
+		case 4:
+			//LZ方块
+			NextBlocks.top    = 1;			
+			NextBlocks.left   = 1;		
+			NextBlocks.bottom = 1;		
+			NextBlocks.right  = 0;		
+			break;
+		case 5:
+			//I方块
+			NextBlocks.top    = 1;		
+			NextBlocks.left   = 0;		
+			NextBlocks.bottom = 2;	
+			NextBlocks.right  = 0;		
+			break;
+	}
 }
 
 
@@ -101,7 +182,7 @@ void MoveBlocks(int x, int y)
 
 	//重打印边框（移动过程中方框有可能会压到边框）
 	setcolor(OTHERCOLOR);
-	rectangle(BLOCKSIZE, BLOCKSIZE, BLOCKSIZE*(PLAYAREA_WIDRH+1), BLOCKSIZE*(PLAYAREA_HEIGHT+1));
+	rectangle(BLOCKSIZE, BLOCKSIZE, BLOCKSIZE*(PLAYAREA_WIDTH+1), BLOCKSIZE*(PLAYAREA_HEIGHT+1));
 }
 
 
