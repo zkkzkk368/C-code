@@ -23,9 +23,9 @@
 #define PLAYAREA_WIDTH  15	
 #define PLAYAREA_HEIGHT 18	//游戏区域大小（单位：格）
 
-#define ACTIVECOLOR RED		//活动方块的颜色
-#define STATICCOLOR	GREEN	//静态方块的颜色
-#define OTHERCOLOR  WHITE	//其他部件的颜色
+#define ACTIVECOLOR 	RED		//活动方块的颜色
+#define STATICCOLOR		GREEN	//静态方块的颜色
+#define OTHERCOLOR  	WHITE	//其他部件的颜色
 
 #define BOARD_T 100 		//键盘检测周期
 
@@ -35,12 +35,12 @@
 #define DOWN   0x5000
 #define RIGHT  0x4d00
 
-struct
+struct Block
 {
 	int x, y;		//旋转中心坐标
 	int status;		//方块状态
 }NextBlocks, ActiveBlocks;	//下一方块和当前方块
-int status[PLAYAREA_HEIGHT+1];	//记录各行状态，bit string，多出一行作为地板
+int status[PLAYAREA_HEIGHT];	//记录各行状态，bit string，多出一行作为地板
 //除去上左边框，游戏区域内的坐标应从1记起
 
 /*
@@ -56,7 +56,7 @@ void ShowBlocks(void);
 void NewBlocks(void);
 void MoveBlocks(int x, int y);
 void PrintBlock(int x, int y, char *style);
-void PrintBlocks(int x, int y);
+void PrintBlocks(struct Block pblock);
 // int  MoveCheck(int dire_k);
 void SetStatus(void);
 void PrintFinished(void);
@@ -112,11 +112,14 @@ void main()
 			{
 				setfillstyle(SOLID_FILL, _back_color);
 				bar(BLOCKSIZE, BLOCKSIZE, BLOCKSIZE * (PLAYAREA_WIDTH+1), BLOCKSIZE * (PLAYAREA_HEIGHT+1));	
-				
-				PrintFinished();
+
+				//重打印边框（抹除游戏区域时，边框也被抹除了）
+				setcolor(OTHERCOLOR);
+				rectangle(BLOCKSIZE, BLOCKSIZE, BLOCKSIZE*(PLAYAREA_WIDTH+1), BLOCKSIZE*(PLAYAREA_HEIGHT+1));
 			}
-			NewBlocks();
+			PrintFinished();
 			ShowBlocks();
+			NewBlocks();
 		}
 	}
 
@@ -130,14 +133,23 @@ void main()
 */
 void Init(void)
 {
+	int NextMargin;
+
 	setcolor(OTHERCOLOR);
 	line(BLOCKSIZE*(PLAYAREA_WIDTH+2), 0, BLOCKSIZE*(PLAYAREA_WIDTH+2), _height);		//分界线x=BLOCKSIZE*(PLAYAREA_WIDTH+2)
 	rectangle(BLOCKSIZE, BLOCKSIZE, BLOCKSIZE*(PLAYAREA_WIDTH+1), BLOCKSIZE*(PLAYAREA_HEIGHT+1));	//打印游戏区域边框
-	// status[PLAYAREA_HEIGHT] = (1<<PLAYAREA_WIDTH+1) -1;		//设置地板
-	status[PLAYAREA_HEIGHT] = 32767;		//设置地板
 
+	NextMargin = ( _width - (PLAYAREA_WIDTH + 2 + 6)*BLOCKSIZE ) / 2;
+	rectangle(_width - 6*BLOCKSIZE - NextMargin, NextMargin, _width - NextMargin, NextMargin + 6*BLOCKSIZE);
+	// status[PLAYAREA_HEIGHT] = (1<<PLAYAREA_WIDTH+1) -1;		//设置地板
+	// status[PLAYAREA_HEIGHT] = 32767;		//设置地板
+
+	//生成并打印第一个动态方块
 	NewBlocks();
 	ShowBlocks();
+
+	//生成下一个方块
+	NewBlocks();
 }
 
 /*
@@ -148,7 +160,12 @@ void ShowBlocks(void)
 {
 	ActiveBlocks = NextBlocks;
 
-	MoveBlocks(PLAYAREA_WIDTH / 2 + 1, 2);
+	//坐标变换
+	ActiveBlocks.x = PLAYAREA_WIDTH / 2 + 1;
+	ActiveBlocks.y = 2;
+
+	PrintBlocks(ActiveBlocks);
+
 }
 
 /*
@@ -158,11 +175,14 @@ void NewBlocks(void)
 {
 	int type;
 
-	NextBlocks.x = PLAYAREA_WIDTH / 2 + 1;
-	NextBlocks.y = 2;
+	setcolor(_back_color);
+	PrintBlocks(NextBlocks);
 
-	// type = 5;
-	type = rand() % 7;
+	NextBlocks.x = PLAYAREA_WIDTH + 6;
+	NextBlocks.y = 4;
+
+	type = 5;
+	// type = rand() % 7;
 	switch(type)
 	{
 		case 0:	
@@ -211,6 +231,23 @@ void NewBlocks(void)
 			*/
 			NextBlocks.status = 0660;	break;
 	}
+
+	/**********LZ、LL、田字形的打印位置修正************/
+	if(type == 1)
+		NextBlocks.x++;
+
+	if(type == 4)
+		NextBlocks.x++;
+
+	if(type == 6)
+	{
+		NextBlocks.x++;
+		NextBlocks.y++;
+	}
+	/**********位置修正结束************/
+
+	setcolor(RED);
+	PrintBlocks(NextBlocks);
 }
 
 /*
@@ -221,15 +258,15 @@ void MoveBlocks(int x, int y)
 {
 	//抹除原来的方块
 	setcolor(_back_color);
-	PrintBlocks(ActiveBlocks.x, ActiveBlocks.y);
-	
-	//打印新的方块
-	setcolor(ACTIVECOLOR);
-	PrintBlocks(x, y);
+	PrintBlocks(ActiveBlocks);
 
 	//修改方块的位置信息
 	ActiveBlocks.x = x;
 	ActiveBlocks.y = y;
+
+	//打印新的方块
+	setcolor(ACTIVECOLOR);
+	PrintBlocks(ActiveBlocks);
 
 	//重打印边框（移动过程中方块有可能会压到边框）
 	setcolor(OTHERCOLOR);
@@ -258,19 +295,19 @@ void PrintBlock(int x, int y, char *style)
 /*
 打印完整的方块
 */
-void PrintBlocks(int x, int y)
+void PrintBlocks(struct Block pblock)
 {
 	int i,j;
 	int StatusCk=1;	//状态探针
 
-	if(ActiveBlocks.status == 1)
+	if(pblock.status == 1)
 		//横长条
-		for(i=x-1; i<=x+2; i++)
-			PrintBlock(i, y, "line");
-	else if(ActiveBlocks.status == 2)
+		for(i=pblock.x-1; i<=pblock.x+2; i++)
+			PrintBlock(i, pblock.y, "line");
+	else if(pblock.status == 2)
 		//竖长条
-		for(i=y-1; i<=y+2; i++)
-			PrintBlock(x, i, "line");
+		for(i=pblock.y-1; i<=pblock.y+2; i++)
+			PrintBlock(pblock.x, i, "line");
 	else
 		//其他
 	{
@@ -279,8 +316,8 @@ void PrintBlocks(int x, int y)
 		{	
 			for(j=1; j>=-1; j--)
 			{	
-				if(ActiveBlocks.status & StatusCk)
-					PrintBlock(x+j, y+i, "line");
+				if(pblock.status & StatusCk)
+					PrintBlock(pblock.x+j, pblock.y+i, "line");
 				StatusCk <<= 1;		//探针偏移
 			}
 		}
@@ -497,7 +534,7 @@ void PrintFinished(void)
 {
 	int i, j, sta, StatusCk;
 
-	setfillstyle(SOLID_FILL, GREEN);
+	setfillstyle(SOLID_FILL, STATICCOLOR);
 	setcolor(RED);
 
 	for(i=0; i<PLAYAREA_HEIGHT; i++)
@@ -523,8 +560,10 @@ void revolve(void)
 
 	if(ActiveBlocks.status == 1)
 		NewStatus = 2;
+
 	else if(ActiveBlocks.status == 2)
 		NewStatus = 1;
+
 	else
 	{
 		for(i=0; i<9; i++)
@@ -540,12 +579,12 @@ void revolve(void)
 	if(Check(ActiveBlocks.x, ActiveBlocks.y, NewStatus))
 	{
 		setcolor(_back_color);
-		PrintBlocks(ActiveBlocks.x, ActiveBlocks.y);
+		PrintBlocks(ActiveBlocks);
 
 		ActiveBlocks.status = NewStatus;
 
 		setcolor(ACTIVECOLOR);
-		PrintBlocks(ActiveBlocks.x, ActiveBlocks.y);	
+		PrintBlocks(ActiveBlocks);	
 	}
 }
 
@@ -639,7 +678,7 @@ int Check(int x, int y, int BlockStatus)
 	}
 	else if(BlockStatus == 2)			//竖条形
 	{
-		if(x>PLAYAREA_HEIGHT)
+		if(x>PLAYAREA_WIDTH)
 			return 0;
 	}
 	else if(BlockStatus & 0111)			//一般形，方块最右端在中心右边
@@ -663,7 +702,7 @@ int Check(int x, int y, int BlockStatus)
 	}
 	else if(BlockStatus == 2 )			//竖条形
 	{
-		if(y+1>PLAYAREA_HEIGHT)
+		if(y+2>PLAYAREA_HEIGHT)
 			return 0;
 	}
 	else if(BlockStatus & 0007)			//一般形，方块最下端为中心下边
