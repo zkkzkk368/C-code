@@ -14,13 +14,10 @@
 而对于长条形方块，
 由于每个方块都占有四个，所以该值必定大于等于000 001 111即十进制数15
 我们不妨定义1为横条形（以左2格为中心），2为竖条形（以上2格为中心）
-就像这样，我们可以直接用一个字节表示出方块的状态；
 */
 
 #include <graphics.h>
 #include <time.h>
-
-#define PTR(x,y)         (_vp+(_width*y+x)*(_color_bits/8))		//相应像素坐标的指针
 
 #define BLOCKSIZE       30	//每格方块大小
 #define PLAYAREA_WIDTH  15	
@@ -41,17 +38,30 @@
 struct
 {
 	int x, y;		//旋转中心坐标
-	int status;	//方块状态
+	int status;		//方块状态
 }NextBlocks, ActiveBlocks;	//下一方块和当前方块
 int status[PLAYAREA_HEIGHT+1];	//记录各行状态，bit string，多出一行作为地板
+//除去上左边框，游戏区域内的坐标应从1记起
+
+/*
+旋转转换量
+8 → 2   7 → 5
+↑   ↓   ↑   ↓
+6 ← 0   3 ← 1  4 → 4
+*/
+int Rev[]={6,3,0,7,4,1,8,5,2};
 
 void Init(void);
 void ShowBlocks(void);
 void NewBlocks(void);
 void MoveBlocks(int x, int y);
-void PrintBlock(int x, int y);
+void PrintBlock(int x, int y, char *style);
 void PrintBlocks(int x, int y);
-int MoveCheck(int dire_k);
+int  MoveCheck(int dire_k);
+void SetStatus(void);
+void PrintFinished(void);
+void revolve(void);
+int  TryClear(void);
 
 void main()
 {
@@ -83,17 +93,30 @@ void main()
 							MoveBlocks(ActiveBlocks.x+1, ActiveBlocks.y);
 						break;
 					case DOWN:
-						if( MoveCheck(DOWN) )
-							MoveBlocks(ActiveBlocks.x, ActiveBlocks.y+1);
+						goto Down;
+						break;
+					case UP:
+						revolve();
 						break;
 				}
 			}
 		}
 
-		if( MoveCheck(DOWN) )
+   Down:if( MoveCheck(DOWN) )
 			MoveBlocks(ActiveBlocks.x, ActiveBlocks.y+1);
 		else
-			getchar();
+		{
+			SetStatus();
+			if( TryClear() )
+			{
+				setfillstyle(SOLID_FILL, _back_color);
+				bar(BLOCKSIZE, BLOCKSIZE, BLOCKSIZE * (PLAYAREA_WIDTH+1), BLOCKSIZE * (PLAYAREA_HEIGHT+1));	
+				
+				PrintFinished();
+			}
+			NewBlocks();
+			ShowBlocks();
+		}
 	}
 
 	closegraph();
@@ -109,7 +132,8 @@ void Init(void)
 	setcolor(OTHERCOLOR);
 	line(BLOCKSIZE*(PLAYAREA_WIDTH+2), 0, BLOCKSIZE*(PLAYAREA_WIDTH+2), _height);		//分界线x=BLOCKSIZE*(PLAYAREA_WIDTH+2)
 	rectangle(BLOCKSIZE, BLOCKSIZE, BLOCKSIZE*(PLAYAREA_WIDTH+1), BLOCKSIZE*(PLAYAREA_HEIGHT+1));	//打印游戏区域边框
-	status[PLAYAREA_HEIGHT] = (1<<(PLAYAREA_WIDTH)) -1;		//设置地板
+	// status[PLAYAREA_HEIGHT] = (1<<PLAYAREA_WIDTH+1) -1;		//设置地板
+	status[PLAYAREA_HEIGHT] = 32767;		//设置地板
 
 	NewBlocks();
 	ShowBlocks();
@@ -159,7 +183,7 @@ void NewBlocks(void)
 			1 1 1
 			0 0 0   ==>  010 111 000  ==> 0270
 			*/
-			NextBlocks.status = 0226;	break;
+			NextBlocks.status = 0270;	break;
 		case 3:
 			/*RZ
 			0 1 0
@@ -208,15 +232,25 @@ void MoveBlocks(int x, int y)
 	//重打印边框（移动过程中方块有可能会压到边框）
 	setcolor(OTHERCOLOR);
 	rectangle(BLOCKSIZE, BLOCKSIZE, BLOCKSIZE*(PLAYAREA_WIDTH+1), BLOCKSIZE*(PLAYAREA_HEIGHT+1));
+
+	PrintFinished();
 }
 
 /*
 【辅助函数】
 打印对应方块坐标的单一方块
 */
-void PrintBlock(int x, int y)
+void PrintBlock(int x, int y, char *style)
 {
-	rectangle(x * BLOCKSIZE, y * BLOCKSIZE, (x+1) * BLOCKSIZE, (y+1) * BLOCKSIZE);
+	switch(style[0])
+	{
+		case 'l':	//line
+			rectangle(x * BLOCKSIZE, y * BLOCKSIZE, (x+1) * BLOCKSIZE, (y+1) * BLOCKSIZE);
+			break;
+		case 'f':	//fill
+			bar(x * BLOCKSIZE, y * BLOCKSIZE, (x+1) * BLOCKSIZE, (y+1) * BLOCKSIZE);
+			break;
+	}
 }
 
 /*
@@ -230,11 +264,11 @@ void PrintBlocks(int x, int y)
 	if(ActiveBlocks.status == 1)
 		//横长条
 		for(i=x-1; i<=x+2; i++)
-			PrintBlock(i, y);
+			PrintBlock(i, y, "line");
 	else if(ActiveBlocks.status == 2)
 		//竖长条
-		for(i=y-1; i<y+2; i++)
-			PrintBlock(x, i);
+		for(i=y-1; i<=y+2; i++)
+			PrintBlock(x, i, "line");
 	else
 		//其他
 	{
@@ -244,7 +278,7 @@ void PrintBlocks(int x, int y)
 			for(j=1; j>=-1; j--)
 			{	
 				if(ActiveBlocks.status & StatusCk)
-					PrintBlock(x+j, y+i);
+					PrintBlock(x+j, y+i, "line");
 				StatusCk <<= 1;		//探针偏移
 			}
 		}
@@ -261,6 +295,20 @@ int MoveCheck(int dire_k)
 	switch(dire_k)
 	{
 		case DOWN:
+			if(ActiveBlocks.status == 1)
+			{	
+				for(i=ActiveBlocks.x-1; i<=ActiveBlocks.x+2; i++)
+					if(status[ActiveBlocks.y] & ( 1 << PLAYAREA_WIDTH - i ))
+						return 0;
+				return 1;
+			}
+
+			if(ActiveBlocks.status == 2)
+				if(status[ActiveBlocks.y+2] & ( 1 << PLAYAREA_WIDTH - ActiveBlocks.x ))	
+					return 0;
+				else 
+					return 1;
+
 			StatusCk = 0400;	//从左上角开始
 			//获取方块底部
 			for(i=-1; i<=1; i++)
@@ -285,12 +333,34 @@ int MoveCheck(int dire_k)
 					ckx = ActiveBlocks.x + i - 1;			//方块下方的一格的坐标
 
 					//如果有方块障碍
-					if(status[cky-1] & ((1<<PLAYAREA_WIDTH)>>ckx))		//此处cky-1是因为第一行是无效的
+					if(status[cky-1] & (1 << PLAYAREA_WIDTH - ckx))		//此处cky-1是因为第一行是无效的
 						return 0;
 				}
 			}
 			return 1;	//如果没有障碍
 		case LEFT:
+			if(ActiveBlocks.status == 1)
+			{	
+				if( ActiveBlocks.x - 2 < 1)
+					return 0;
+				else if( status[ActiveBlocks.y-1] & ( 1 << (PLAYAREA_WIDTH - ActiveBlocks.x + 2) ) )
+					return 0;
+
+				return 1;
+			}
+
+			if(ActiveBlocks.status == 2)
+			{	
+				if( ActiveBlocks.x - 1 < 1)
+					return 0;
+				for(i=-1; i<=2; i++)
+					if( status[ActiveBlocks.y -1 + i] & ( 1 << (PLAYAREA_WIDTH - ActiveBlocks.x + 1) ) )
+						return 0;
+
+				return 1;
+			}
+
+
 			StatusCk = 1;	//从右下角开始
 			//获取方块左
 			for(i=1; i>=-1; i--)
@@ -318,12 +388,33 @@ int MoveCheck(int dire_k)
 					if(ckx < 1)	return 0;
 
 					//如果有方块障碍
-					if(status[cky-1] & ((1<<PLAYAREA_WIDTH)>>ckx))		//此处cky-1是因为第一行是无效的
+					if(status[cky-1] & (1 << PLAYAREA_WIDTH - ckx))		//此处cky-1是因为第一行是无效的
 						return 0;
 				}
 			}
 			return 1;	//如果没有障碍
 		case RIGHT:
+			if(ActiveBlocks.status == 1)
+			{	
+				if( ActiveBlocks.x + 3 > PLAYAREA_WIDTH)
+					return 0;
+				else if( status[ActiveBlocks.y-1] & (1 << (PLAYAREA_WIDTH - ActiveBlocks.x - 3) ) )
+					return 0;
+
+				return 1;
+			}
+
+			if(ActiveBlocks.status == 2)
+			{	
+				if( ActiveBlocks.x + 1 > PLAYAREA_WIDTH)
+					return 0;
+				for(i=-1; i<=2; i++)
+					if( status[ActiveBlocks.y -1 + i] & ( 1 << (PLAYAREA_WIDTH - ActiveBlocks.x - 1) ) )
+						return 0;
+
+				return 1;
+			}
+
 			StatusCk = 0400;	//从左上角开始
 			//获取方块右部
 			for(i=-1; i<=1; i++)
@@ -351,10 +442,127 @@ int MoveCheck(int dire_k)
 					if(ckx > PLAYAREA_WIDTH) return 0;
 
 					//如果有方块障碍
-					if(status[cky-1] & ((1<<PLAYAREA_WIDTH)>>ckx))			//此处cky-1是因为第一行是无效的
+					if(status[cky-1] & (1 << PLAYAREA_WIDTH - ckx))			//此处cky-1是因为第一行是无效的
 						return 0;
 				}
 			}
 			return 1;	//如果没有障碍
 	}
+}
+
+void SetStatus(void)
+{
+	int GetStatus = 07;
+	int InsertStatus;
+	int i;
+	int offset;
+
+	if(ActiveBlocks.status == 1)
+	{
+		InsertStatus = 017 << (PLAYAREA_WIDTH - ActiveBlocks.x - 2);
+		status[ActiveBlocks.y-1] |= InsertStatus;
+		return;
+	}
+
+	if(ActiveBlocks.status == 2)
+	{
+		for(i=-2; i<=1; i++)
+		{
+			status[ActiveBlocks.y+i] |= 1 << PLAYAREA_WIDTH - ActiveBlocks.x;
+		}
+		return;
+	}
+
+	for(i=0; i<3; i++)
+	{
+		offset = PLAYAREA_WIDTH - ActiveBlocks.x - 3*i - 1;
+		if(offset >= 0)
+			InsertStatus = (GetStatus & ActiveBlocks.status) << offset;
+		else
+			InsertStatus = (GetStatus & ActiveBlocks.status) >> -offset;
+		status[ActiveBlocks.y-i] |= InsertStatus;
+		GetStatus <<= 3;
+	}
+}
+
+void PrintFinished(void)
+{
+	int i, j, sta, StatusCk;
+
+	setfillstyle(SOLID_FILL, GREEN);
+	setcolor(RED);
+
+	for(i=0; i<PLAYAREA_HEIGHT; i++)
+	{
+		StatusCk = 1;
+		for(j=0; j<PLAYAREA_WIDTH; j++)
+		{
+			if(status[i] & StatusCk)
+			{
+				PrintBlock(PLAYAREA_WIDTH-j, i+1, "fill");
+				PrintBlock(PLAYAREA_WIDTH-j, i+1, "line");
+			}
+			StatusCk <<= 1;
+		}
+	}
+}
+
+void revolve(void)
+{
+	int StatusCk = 1;
+	int NewStatus = 0;
+	int i;
+
+	setcolor(_back_color);
+	PrintBlocks(ActiveBlocks.x, ActiveBlocks.y);
+
+	if(ActiveBlocks.status == 1)
+		ActiveBlocks.status = 2;
+	else if(ActiveBlocks.status == 2)
+		ActiveBlocks.status = 1;
+	else
+	{
+		
+
+		for(i=0; i<9; i++)
+		{	
+			if(StatusCk & ActiveBlocks.status)
+				NewStatus |= ( 1 << Rev[i] );
+			StatusCk <<= 1;
+		}
+
+		ActiveBlocks.status = NewStatus;
+	}
+
+	setcolor(ACTIVECOLOR);
+	PrintBlocks(ActiveBlocks.x, ActiveBlocks.y);
+}
+
+int TryClear(void)
+{
+	int i, flag = 0;
+
+	for(i=0; i<PLAYAREA_HEIGHT; i++)
+	{//32767	65535
+		// printf("%d | ", status[PLAYAREA_HEIGHT]);	
+		if(status[i] == 32767)
+		{	
+			status[i] = 0;
+			flag = 1;
+		}
+	}
+	if(flag == 0)	return 0;
+	
+	for(i=PLAYAREA_HEIGHT-1; i>0; i--)
+	{
+		if(status[i] == 0)
+			if(status[i-1] == 0)
+				return 1;
+			else
+			{	
+				status[i] = status[i-1];
+				status[i-1] = 0;
+			}
+	}
+	return 1;
 }
