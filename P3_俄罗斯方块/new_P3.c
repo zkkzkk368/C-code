@@ -92,7 +92,12 @@ Ver3.2
 Ver3.3
 1、添加“计分板”、“退出”、“暂停”功能
 2、完善注释
-3、优化部分代码
+3、添加“游戏结束”
+
+Ver3.4
+1、改变delay的时机，解决持续按住 ↓键 松开后方块依旧下移的问题
+2、修复BUG：
+	同时消除两层以上时，高层的方块没有沉下来
 
 */
 
@@ -144,7 +149,6 @@ void NewBlocks(void);							//生成下一方块的信息
 void MoveBlocks(int x, int y);					//移动方块
 void PrintBlock(int x, int y, char *style);		//打印方格
 void PrintBlocks(struct Block pblock);			//打印方块
-// int  MoveCheck(int dire_k);
 void SetStatus(void);							//设置状态（动态方块静态化）
 void PrintFinished(void);						//打印静态方块
 void revolve(void);								//旋转方块
@@ -162,12 +166,12 @@ void main()
 	srand((int)time(0));	//随机数种子
 	initgraph(&gdriver, &gmode, "");
 	Init();					//初始化
+	delay(BOARD_T);
 
 	while(1)
 	{
 		for(DelayTime = 0; DelayTime < MoveSpeed; DelayTime += BOARD_T)
 		{
-			delay(BOARD_T);
 			while(bioskey(1))
 			{
 				Board_k = bioskey(0);
@@ -200,6 +204,7 @@ void main()
 						break;
 				}
 			}
+			delay(BOARD_T);
 		}
 
    Down:if( Check(ActiveBlocks.x, ActiveBlocks.y+1,   ActiveBlocks.status) )
@@ -207,6 +212,20 @@ void main()
 		else
 		{
 			SetStatus();
+
+			//Game Over
+			if(status[0] != 0)
+			{
+				initgraph(&gdriver, &gmode, "");
+				load_8bit_bmp(0,0,"GameOver.bmp");
+				setcolor(RED);
+				outtextxy(_width / 2 - 80, _height / 2 + 40, "Press any key to exit");
+				bioskey(0);
+				closegraph();
+				exit(0);
+			}
+
+			//清除方块
 			if( TryClear() )
 			{
 				//抹除整个游戏区域
@@ -259,8 +278,6 @@ void Init(void)
 	//打印显示下一方块的区域
 	NextMargin = ( _width - (PLAYAREA_WIDTH + 2 + 6)*BLOCKSIZE ) / 2;
 	rectangle(_width - 6*BLOCKSIZE - NextMargin, NextMargin, _width - NextMargin, NextMargin + 6*BLOCKSIZE);
-	// status[PLAYAREA_HEIGHT] = (1<<PLAYAREA_WIDTH+1) -1;		//设置地板
-	// status[PLAYAREA_HEIGHT] = 32767;		//设置地板
 
 	//打印提示语
 	outtextxy( SCOREAREA_X - 40, SCOREAREA_Y + 70, "Press [P] to pause" );
@@ -329,7 +346,6 @@ void NewBlocks(void)
 	NextBlocks.x = PLAYAREA_WIDTH + 6;
 	NextBlocks.y = 4;
 
-	// type = 5;
 	//产生随机类型的方块
 	type = rand() % 7;
 	switch(type)
@@ -499,177 +515,6 @@ void PrintBlocks(struct Block pblock)
 	}
 }
 
-/*
-平移检测
-由于代码过于冗杂，且不适用于旋转检测
-所以采用新的思路进行变化检查
-将旋转、平移检测统一到Check()函数
-*/
-// int MoveCheck(int dire_k)
-// {
-// 	int i, j;
-// 	int rel[3] = {-2,-2,-2};	//从上到下（从左到右）对应边界相对旋转中心的坐标，-2表示该行（列）无占用空间
-// 	int StatusCk;				//探针
-// 	int ckx, cky;				//检查点的方块坐标
-
-// 	switch(dire_k)
-// 	{
-// 		case DOWN:
-// 			if(ActiveBlocks.status == 1)
-// 			{	
-// 				for(i=ActiveBlocks.x-1; i<=ActiveBlocks.x+2; i++)
-// 					if(status[ActiveBlocks.y] & ( 1 << PLAYAREA_WIDTH - i ))
-// 						return 0;
-// 				return 1;
-// 			}
-
-// 			if(ActiveBlocks.status == 2)
-// 				if(status[ActiveBlocks.y+2] & ( 1 << PLAYAREA_WIDTH - ActiveBlocks.x ))	
-// 					return 0;
-// 				else 
-// 					return 1;
-
-// 			StatusCk = 0400;	//从左上角开始
-// 			//获取方块底部
-// 			for(i=-1; i<=1; i++)
-// 			//从上到下
-// 			{	
-// 				for(j=-1; j<=1; j++)
-// 				//从左到右
-// 				{	
-// 					if(ActiveBlocks.status & StatusCk)
-// 						rel[j+1] = i;
-// 					StatusCk >>= 1;		//探针右移
-// 				}
-// 			}
-// 			//此时rel依次保存着从左到右的最低点的y坐标，或为缺省值-2
-
-// 			//检测方块底部是否有障碍
-// 			for(i=0; i<3; i++)
-// 			{
-// 				if(rel[i] != -2)
-// 				{
-// 					cky = ActiveBlocks.y + rel[i] + 1;
-// 					ckx = ActiveBlocks.x + i - 1;			//方块下方的一格的坐标
-
-// 					//如果有方块障碍
-// 					if(status[cky-1] & (1 << PLAYAREA_WIDTH - ckx))		//此处cky-1是因为第一行是无效的
-// 						return 0;
-// 				}
-// 			}
-// 			return 1;	//如果没有障碍
-// 		case LEFT:
-// 			if(ActiveBlocks.status == 1)
-// 			{	
-// 				if( ActiveBlocks.x - 2 < 1)
-// 					return 0;
-// 				else if( status[ActiveBlocks.y-1] & ( 1 << (PLAYAREA_WIDTH - ActiveBlocks.x + 2) ) )
-// 					return 0;
-
-// 				return 1;
-// 			}
-
-// 			if(ActiveBlocks.status == 2)
-// 			{	
-// 				if( ActiveBlocks.x - 1 < 1)
-// 					return 0;
-// 				for(i=-1; i<=2; i++)
-// 					if( status[ActiveBlocks.y -1 + i] & ( 1 << (PLAYAREA_WIDTH - ActiveBlocks.x + 1) ) )
-// 						return 0;
-
-// 				return 1;
-// 			}
-
-
-// 			StatusCk = 1;	//从右下角开始
-// 			//获取方块左
-// 			for(i=1; i>=-1; i--)
-// 			//从下到上
-// 			{	
-// 				for(j=1; j>=-1; j--)
-// 				//从右到左
-// 				{	
-// 					if(ActiveBlocks.status & StatusCk)
-// 						rel[i+1] = j;
-// 					StatusCk <<= 1;		//探针左移
-// 				}
-// 			}
-// 			//此时rel依次保存着从下到上的最左点的x坐标，或为缺省值-2
-
-// 			//检测方块左部是否有障碍
-// 			for(i=0; i<3; i++)
-// 			{
-// 				if(rel[i] != -2)
-// 				{
-// 					cky = ActiveBlocks.y + i - 1;
-// 					ckx = ActiveBlocks.x + rel[i] - 1;			//方格左方的一格的坐标
-
-// 					//如果检测点越界
-// 					if(ckx < 1)	return 0;
-
-// 					//如果有方块障碍
-// 					if(status[cky-1] & (1 << PLAYAREA_WIDTH - ckx))		//此处cky-1是因为第一行是无效的
-// 						return 0;
-// 				}
-// 			}
-// 			return 1;	//如果没有障碍
-// 		case RIGHT:
-// 			if(ActiveBlocks.status == 1)
-// 			{	
-// 				if( ActiveBlocks.x + 3 > PLAYAREA_WIDTH)
-// 					return 0;
-// 				else if( status[ActiveBlocks.y-1] & (1 << (PLAYAREA_WIDTH - ActiveBlocks.x - 3) ) )
-// 					return 0;
-
-// 				return 1;
-// 			}
-
-// 			if(ActiveBlocks.status == 2)
-// 			{	
-// 				if( ActiveBlocks.x + 1 > PLAYAREA_WIDTH)
-// 					return 0;
-// 				for(i=-1; i<=2; i++)
-// 					if( status[ActiveBlocks.y -1 + i] & ( 1 << (PLAYAREA_WIDTH - ActiveBlocks.x - 1) ) )
-// 						return 0;
-
-// 				return 1;
-// 			}
-
-// 			StatusCk = 0400;	//从左上角开始
-// 			//获取方块右部
-// 			for(i=-1; i<=1; i++)
-// 			//从上到下
-// 			{	
-// 				for(j=-1; j<=1; j++)
-// 				//从左到右
-// 				{	
-// 					if(ActiveBlocks.status & StatusCk)
-// 						rel[i+1] = j;
-// 					StatusCk >>= 1;		//探针右移
-// 				}
-// 			}
-// 			//此时rel依次保存着从上到下的最右点的x坐标，或为缺省值-2
-
-// 			//检测方块右部是否有障碍
-// 			for(i=0; i<3; i++)
-// 			{
-// 				if(rel[i] != -2)
-// 				{
-// 					cky = ActiveBlocks.y + i - 1;
-// 					ckx = ActiveBlocks.x + rel[i] + 1;			//方格右方的一格的坐标
-
-// 					//如果检测点越界
-// 					if(ckx > PLAYAREA_WIDTH) return 0;
-
-// 					//如果有方块障碍
-// 					if(status[cky-1] & (1 << PLAYAREA_WIDTH - ckx))			//此处cky-1是因为第一行是无效的
-// 						return 0;
-// 				}
-// 			}
-// 			return 1;	//如果没有障碍
-// 	}
-// }
-
 
 /*
 【插入游戏状态记录】
@@ -817,6 +662,7 @@ void revolve(void)
 	}
 }
 
+
 /*
 【尝试消除】
 ================功能================
@@ -832,7 +678,7 @@ void revolve(void)
 */
 int TryClear(void)
 {
-	int i;
+	int i, j;
 	int flag = 0;	//“消除”标志
 
 	for(i=0; i<PLAYAREA_HEIGHT; i++)
@@ -845,19 +691,27 @@ int TryClear(void)
 			flag = 1;		//设置“消除”标志
 		}
 	}
-	if(flag == 0)	return 0;	//如果没有发生消除，直接返回0
+	if(flag == 0)	//如果没有发生消除，直接返回0
+		return 0;	
 	
 	//填补被消除的空行
 	for(i=PLAYAREA_HEIGHT-1; i>0; i--)
 	{
 		if(status[i] == 0)
-			if(status[i-1] == 0)
-				return 1;
-			else
-			{	
-				status[i] = status[i-1];
-				status[i-1] = 0;
+		{
+			for(j=i-1; j>=0; j--)	//往上找到首个非空行
+			{
+				if(status[j] != 0)
+				{
+					status[i] = status[j];
+					status[j] = 0;
+					break;
+				}	
 			}
+
+			if(j==0)	//如果找到了首行，说明i行以上都是空行，无需再找
+				break;
+		}
 	}
 	return 1;
 }
@@ -990,17 +844,3 @@ int Check(int x, int y, int BlockStatus)
 
 	return 1;	
 }
-
-
-// int MoveCheck(int dire_k)
-// {
-// 	switch(dire_k)
-// 	{
-// 		case LEFT:
-// 			return Check(ActiveBlocks.x-1, ActiveBlocks.y,   ActiveBlocks.status);
-// 		case RIGHT:
-// 			return Check(ActiveBlocks.x+1, ActiveBlocks.y,   ActiveBlocks.status);
-// 		case DOWN:
-// 			return Check(ActiveBlocks.x,   ActiveBlocks.y+1, ActiveBlocks.status);
-// 	}
-// }
