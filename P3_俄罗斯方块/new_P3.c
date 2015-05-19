@@ -16,8 +16,14 @@
 0 1 0
 0 1 1  表示L形的方块
 
-这种情况下，不考虑中心，共有八个0或1的元素，将矩阵按行摊开
+这种情况下，不考虑中心，共有八个0或1的元素，将矩阵压缩，按行摊开
 即 010 010 011 ，为八进制数0223
+
+###
+=。=如果忽略旋转中心的1， 我们可以直接使用char类型存储姿态
+但是第一三行、第二行的信息需要分别获取
+造成代码冗长，也不易维护
+###
 
 而对于长条形方块，
 由于每个方块都占有四个，所以该值必定大于等于000 001 111即十进制数15
@@ -43,10 +49,10 @@
 #include <time.h>
 
 #define BLOCKSIZE       30	//每格方块大小
-#define PLAYAREA_WIDTH  15	
-#define PLAYAREA_HEIGHT 18	//游戏区域大小（单位：格）
-#define SCOREAREA_X		(_width - (_width - PLAYAREA_WIDTH*BLOCKSIZE) / 2)
-#define SCOREAREA_Y		300
+#define PLAYAREA_WIDTH  15	//游戏区域宽度（单位：格）
+#define PLAYAREA_HEIGHT 18	//游戏区域高度（单位：格）
+#define SCOREAREA_X		(_width - (_width - PLAYAREA_WIDTH*BLOCKSIZE) / 2)	//计分板位置x
+#define SCOREAREA_Y		300		//计分板位置y
 
 #define ACTIVECOLOR 	RED		//活动方块的颜色
 #define STATICCOLOR		GREEN	//静态方块的颜色
@@ -60,17 +66,21 @@
 #define DOWN   0x5000
 #define RIGHT  0x4d00
 
+//方块信息存储结构
 struct Block
 {
 	int x, y;		//旋转中心坐标
 	int status;		//方块状态
 }NextBlocks, ActiveBlocks;	//下一方块和当前方块
-int status[PLAYAREA_HEIGHT];	//记录各行状态，bit string，多出一行作为地板
-//除去上左边框，游戏区域内的坐标应从1记起
+
+int status[PLAYAREA_HEIGHT];	//记录各行状态，bit string
+								//除去上左边框，游戏区域内的坐标应从1记起
+								//但该数组索引从0记起，即与游戏区域方格坐标相差1,
+
 int score=0;	//分数统计
 
 /*
-旋转转换量
+旋转映射
 8 → 2   7 → 5
 ↑   ↓   ↑   ↓
 6 ← 0   3 ← 1  4 → 4
@@ -96,11 +106,11 @@ void main()
 	int MoveSpeed = 1000;	//方框移动速度，毫秒
 	int DelayTime;			//延迟累计时间
 	int Board_k;			//从键盘缓冲队列获取的按键信息
-	char pscore[10];		//成绩字符串
+	char pscore[4];			//成绩字符串
 
 	srand((int)time(0));	//随机数种子
 	initgraph(&gdriver, &gmode, "");
-	Init();
+	Init();					//初始化
 
 	while(1)
 	{
@@ -110,7 +120,7 @@ void main()
 			while(bioskey(1))
 			{
 				Board_k = bioskey(0);
-				switch(Board_k)
+				switch(Board_k)			//特殊按键扫描码
 				{
 					case LEFT:
 						if( Check(ActiveBlocks.x-1, ActiveBlocks.y,   ActiveBlocks.status) )
@@ -120,11 +130,22 @@ void main()
 						if( Check(ActiveBlocks.x+1, ActiveBlocks.y,   ActiveBlocks.status) )
 							MoveBlocks(ActiveBlocks.x+1, ActiveBlocks.y);
 						break;
-					case DOWN:
+					case DOWN:			//发生常规下移工作，直接跳转，结束键盘检测
 						goto Down;
 						break;
 					case UP:
 						revolve();
+						break;
+				}
+
+				switch((char) Board_k)	//截取ASICC码
+				{
+					case 'e':
+						closegraph();
+						exit(0);
+						break;
+					case 'p':
+						bioskey(0);
 						break;
 				}
 			}
@@ -147,12 +168,12 @@ void main()
 
 				//抹除分数区
 				setcolor(_back_color);
-				bar(SCOREAREA_X, SCOREAREA_Y, SCOREAREA_X+8*9, SCOREAREA_Y+16);
+				bar(SCOREAREA_X + 48, SCOREAREA_Y, SCOREAREA_X+8*9, SCOREAREA_Y+16);
 
 				//打印分数
 				setcolor(RED);
-				sprintf(pscore, "Score:%03d", score);
-				outtextxy( SCOREAREA_X , SCOREAREA_Y, pscore );
+				sprintf(pscore, "%03d", score);
+				outtextxy( SCOREAREA_X + 48 , SCOREAREA_Y, pscore );
 			}
 			PrintFinished();
 			ShowBlocks();
@@ -179,7 +200,6 @@ void main()
 void Init(void)
 {
 	int NextMargin;		//显示下一方块的区域的边距
-	char pscore[10];	//分数字符串
 
 	setcolor(OTHERCOLOR);
 	line(BLOCKSIZE*(PLAYAREA_WIDTH+2), 0, BLOCKSIZE*(PLAYAREA_WIDTH+2), _height);					//分界线x=BLOCKSIZE*(PLAYAREA_WIDTH+2)
@@ -191,10 +211,15 @@ void Init(void)
 	// status[PLAYAREA_HEIGHT] = (1<<PLAYAREA_WIDTH+1) -1;		//设置地板
 	// status[PLAYAREA_HEIGHT] = 32767;		//设置地板
 
+	//打印提示语
+	outtextxy( SCOREAREA_X - 40, SCOREAREA_Y + 70, "Press [P] to pause" );
+	outtextxy( SCOREAREA_X - 90, SCOREAREA_Y + 90, "Then press any key to continue" );
+	outtextxy( SCOREAREA_X - 40, SCOREAREA_Y + 150, "Press [E] to exit" );
+
 	//打印分数
+	outtextxy( SCOREAREA_X , SCOREAREA_Y, "Score:" );
 	setcolor(RED);
-	sprintf(pscore, "Score:%03d", score);
-	outtextxy( SCOREAREA_X , SCOREAREA_Y, pscore );
+	outtextxy( SCOREAREA_X + 48 , SCOREAREA_Y, "000" );
 	
 	//生成并打印第一个动态方块
 	NewBlocks();
@@ -641,7 +666,7 @@ void SetStatus(void)
 		else				//右偏移
 			InsertStatus = (GetStatus & ActiveBlocks.status) >> -offset;	//信息偏移
 		status[ActiveBlocks.y-i] |= InsertStatus;		//插入信息
-		GetStatus <<= 3;			//指针偏移，获取上一行的信息
+		GetStatus <<= 3;			//探针偏移，获取上一行的信息
 	}
 }
 
